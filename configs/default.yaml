@@ -1,0 +1,41 @@
+data:
+  wikiart_root: "data/wikiart"
+  synthetic_root: "data/synthetic"
+  image_size: 224
+  alpha_min: 0.10
+  alpha_max: 0.40
+  num_pairs: 50000
+  train_split: 0.80
+  val_split: 0.10
+  seed: 42
+
+model:
+  freeze_layers: 6
+  n_styles: 27
+  n_artists: 23
+  n_genres: 10
+  dropout: 0.3
+
+training:
+  batch_size: 32
+  num_workers: 4
+  epochs: 50
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-5
+  device: "cpu"
+  loss_weights:
+    style: 1.0
+    artist: 1.0
+    genre: 1.0
+    hidden: 2.0
+    heatmap: 3.0
+
+mlflow:
+  experiment_name: "painting-in-a-painting"
+  tracking_uri: "mlruns"
+  run_name: "baseline"
+
+optuna:
+  n_trials: 20
+  epochs_per_trial: 10
+  storage: "sqlite:///optuna.db"

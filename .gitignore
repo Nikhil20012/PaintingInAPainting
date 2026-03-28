@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+env/
+
+# Data - never push raw or generated images
+data/wikiart/
+data/synthetic/
+
+# MLflow - experiment logs stay local
+mlruns/
+mlartifacts/
+
+# Optuna - hyperparameter search database
+optuna.db
+
+# Model checkpoints - too large for git
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# GCP service account keys - never push these
+*.json
+service_account*.json
