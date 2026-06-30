@@ -7,18 +7,17 @@ build/
 .venv/
 env/
 
-# Data - never push raw or generated images
-data/wikiart/
-data/synthetic/
+# Data — never push images or generated data
+data/
 
-# MLflow - experiment logs stay local
+# MLflow
 mlruns/
 mlartifacts/
 
-# Optuna - hyperparameter search database
+# Optuna
 optuna.db
 
-# Model checkpoints - too large for git
+# Model checkpoints
 checkpoints/
 *.pth
 *.pt
@@ -26,7 +25,6 @@ checkpoints/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # OS
 .DS_Store
@@ -36,6 +34,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# GCP service account keys - never push these
+# Azure credentials — NEVER push these
 *.json
-service_account*.json
+!configs/*.yaml
+.env

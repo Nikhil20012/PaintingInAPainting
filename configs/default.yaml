@@ -1,6 +1,14 @@
+azure:
+  storage_account: "paintingdatalake"
+  container: "painting-data"
+  bronze_path: "bronze/wikiart"
+  silver_path: "silver/wikiart"
+  gold_path: "gold/wikiart"
+  synthetic_path: "synthetic"
+  model_path: "models/checkpoints"
+
 data:
-  wikiart_root: "data/wikiart"
-  synthetic_root: "data/synthetic"
+  local_root: "data"
   image_size: 224
   alpha_min: 0.10
   alpha_max: 0.40
@@ -39,3 +47,12 @@ optuna:
   n_trials: 20
   epochs_per_trial: 10
   storage: "sqlite:///optuna.db"
+
+api:
+  host: "0.0.0.0"
+  port: 5000
+  model_checkpoint: "models/checkpoints/best.pth"
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-6"

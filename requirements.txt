@@ -1,14 +1,39 @@
+# Core ML
 torch>=2.5.0
 torchvision>=0.20.0
 numpy>=2.0.0
 Pillow>=11.0.0
+
+# Config
 PyYAML>=6.0.2
 omegaconf>=2.3.0
+
+# Experiment tracking + HPO
 mlflow>=2.17.0
 optuna>=3.6.0
 optuna-integration[mlflow]>=3.6.0
-tqdm>=4.67.0
+
+# Evaluation + visualization
+scikit-learn>=1.5.0
 matplotlib>=3.9.0
 pandas>=2.2.0
-scikit-learn>=1.5.0
+pytorch-grad-cam>=1.5.0
+
+# Azure
+azure-storage-file-datalake>=12.14.0
+azure-identity>=1.15.0
+python-dotenv>=1.0.0
+
+# API + LLM
+flask>=3.0.0
+anthropic>=0.40.0
+gunicorn>=22.0.0
+
+# Frontend
+streamlit>=1.38.0
+
+# Utilities
+tqdm>=4.67.0
+
+# Dev
 pytest>=8.3.0
