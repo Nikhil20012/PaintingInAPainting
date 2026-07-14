@@ -20,8 +20,8 @@ data:
 model:
   freeze_layers: 6
   n_styles: 27
-  n_artists: 23
-  n_genres: 10
+  n_artists: 856    # was 23
+  n_genres: 27      # was 10
   dropout: 0.3
 
 training:
