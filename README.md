@@ -179,7 +179,7 @@ python -m scripts.train
 - [x] Synthetic data generation pipeline
 - [x] Azure Data Lake integration
 - [ ] Airflow DAG orchestration
-- [ ] Model training + Optuna HPO
+- [ ] Model training + MLflow tracking + Optuna HPO
 - [ ] Evaluation + Grad-CAM visualizations
 - [ ] Power BI dashboard
 - [ ] Flask API + Claude LLM integration
@@ -192,6 +192,7 @@ python -m scripts.train
 ## Author
 
 **Nikhil Bharadwaj Yellapragada**
+<br>
 MS Data Analytics Engineering, Northeastern University
 
 [![LinkedIn](https://img.shields.io/badge/-LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/nikhil-bharadwaj-yellapragada-48321a211)
