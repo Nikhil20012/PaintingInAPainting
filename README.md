@@ -186,7 +186,6 @@ python -m scripts.train
 - [ ] Streamlit frontend
 - [ ] Docker + Azure Container Apps deployment
 - [ ] GitHub Actions CI/CD
-- [ ] Research paper
 
 ---
 
