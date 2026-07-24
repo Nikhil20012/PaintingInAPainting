@@ -10,6 +10,8 @@
 [![Databricks](https://img.shields.io/badge/Databricks-PySpark-FF3621?style=flat-square&logo=databricks&logoColor=white)](https://www.databricks.com/)
 [![Airflow](https://img.shields.io/badge/Airflow-Pipeline-017CEE?style=flat-square&logo=apacheairflow&logoColor=white)](https://airflow.apache.org/)
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-0194E2?style=flat-square&logo=mlflow&logoColor=white)](https://mlflow.org/)
+[![Pinecone](https://img.shields.io/badge/Pinecone-Vector_DB-000?style=flat-square&logo=pinecone&logoColor=white)](https://www.pinecone.io/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-RAG_Orchestration-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://www.langchain.com/langgraph)
 [![Claude](https://img.shields.io/badge/Claude-LLM_Narrative-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Power BI](https://img.shields.io/badge/Power_BI-Dashboard-F2C811?style=flat-square&logo=powerbi&logoColor=black)](https://powerbi.microsoft.com/)
@@ -24,6 +26,8 @@
 ## Overview
 
 A deep learning system that detects hidden paintings beneath other paintings using only standard RGB images, no X-ray or specialized equipment required. The model is a Vision Transformer (ViT-B/16) with multi-task classification and spatial detection heads, trained entirely on synthetically generated composite images.
+
+When a hidden layer is detected, the system retrieves relevant art history context from a Pinecone vector database using sentence-transformer embeddings, then passes the model predictions and retrieved context through a LangGraph-orchestrated RAG pipeline to Claude for grounded narrative generation.
 
 **Core research contribution:** synthetic alpha compositing as a scalable training strategy for hidden layer detection, generalizable to medical imaging, satellite remote sensing, document forensics, and industrial inspection.
 
@@ -44,8 +48,11 @@ Azure Data Lake Gen2
 Model Training
     ViT-B/16 + Optuna HPO + MLflow tracking
          ↓
+RAG Pipeline
+    Model predictions → Pinecone retrieval → LangGraph → Claude narrative
+         ↓
 Deployment
-    Flask API + Claude LLM narrative → Azure Container Apps
+    Flask API → Azure Container Apps
     Streamlit frontend → Streamlit Community Cloud
     CI/CD → GitHub Actions
 ```
@@ -66,6 +73,18 @@ The model uses a pretrained ViT-B/16 backbone with two output heads:
 - Spatial heatmap (224x224) localizing where hidden content bleeds through
 
 Multi-task loss combines cross-entropy (style, artist, genre), BCE (hidden detection), and Dice + BCE (heatmap), with configurable task weights.
+
+---
+
+## RAG Pipeline
+
+After the model produces predictions, the system generates a grounded narrative about the painting:
+
+1. **Embed** — predicted style, artist, and genre are used to query a Pinecone vector index containing 80K+ art history context chunks (artist bios, style descriptions, period information) embedded with sentence-transformers
+2. **Retrieve** — top-k relevant context chunks are pulled from Pinecone
+3. **Generate** — LangGraph orchestrates a workflow that passes retrieved context + model predictions to Claude API for narrative generation
+
+This replaces a blind LLM call with a production RAG architecture where every generated narrative is grounded in real art history context.
 
 ---
 
@@ -91,6 +110,8 @@ Built using a medallion architecture in Databricks Free Edition:
 PaintingInAPainting/
 ├── configs/
 │   └── default.yaml              # All config: Azure, model, training, MLflow, Optuna
+├── dags/
+│   └── painting_pipeline.py      # Airflow DAG with 9 tasks
 ├── data/
 │   ├── wikiart/                   # 81K raw images (gitignored)
 │   └── gold/labels/               # Gold CSVs with label mappings
@@ -103,13 +124,22 @@ PaintingInAPainting/
 │   │   ├── classifier.py          # Multi-task classification head
 │   │   ├── detector.py            # Heatmap detection head
 │   │   └── model.py               # Unified model
+│   ├── rag/
+│   │   ├── embeddings.py          # Sentence-transformer embedding pipeline
+│   │   ├── retriever.py           # Pinecone vector search
+│   │   └── graph.py               # LangGraph RAG orchestration workflow
 │   └── training/
 │       ├── losses.py              # Dice + BCE + CrossEntropy
 │       └── trainer.py             # Training loop + MLflow logging
 ├── scripts/
+│   ├── bronze_ingest.py           # PySpark audit of raw data
+│   ├── bronze_to_silver.py        # PySpark data cleaning
+│   ├── silver_to_gold.py          # PySpark balancing + label mapping
 │   ├── generate_dataset.py        # Synthetic data generation entry point
+│   ├── index_pinecone.py          # Embed and load art history into Pinecone
 │   ├── train.py                   # Training + Optuna HPO
 │   └── upload_gold_to_datalake.py # Azure Data Lake upload
+├── docker-compose.yml             # Local Airflow setup
 └── notebooks/                     # Databricks notebooks (Bronze/Silver/Gold)
 ```
 
@@ -130,7 +160,14 @@ Create a `.env` file in the project root:
 ```
 AZURE_STORAGE_ACCOUNT_NAME=<your-account>
 AZURE_STORAGE_ACCOUNT_KEY=<your-key>
+PINECONE_API_KEY=<your-key>
 ```
+
+**Start Airflow (requires Docker):**
+```bash
+docker compose up -d
+```
+Dashboard at `http://localhost:8081` (admin / admin)
 
 ---
 
@@ -146,6 +183,11 @@ python -m scripts.generate_dataset
 python scripts/upload_gold_to_datalake.py
 ```
 
+**Index art history into Pinecone:**
+```bash
+python scripts/index_pinecone.py
+```
+
 **Train:**
 ```bash
 python -m scripts.train
@@ -159,14 +201,19 @@ python -m scripts.train
 |---|---|
 | Data storage | Azure Data Lake Gen2 |
 | Data processing | PySpark (Databricks Free Edition) |
-| Orchestration | Apache Airflow |
+| Orchestration | Apache Airflow (Docker Compose) |
 | ML framework | PyTorch + torchvision |
 | Model | ViT-B/16 (pretrained, fine-tuned) |
 | Experiment tracking | MLflow |
 | Hyperparameter search | Optuna + SQLite |
 | Explainability | Grad-CAM |
-| API | Flask + Claude API (LLM narrative) |
+| Vector database | Pinecone |
+| Embeddings | Sentence-transformers |
+| RAG orchestration | LangGraph |
+| LLM | Claude API (Anthropic) |
+| API | Flask |
 | Frontend | Streamlit |
+| Dashboard | Power BI |
 | Deployment | Azure Container Apps |
 | CI/CD | GitHub Actions |
 
@@ -178,11 +225,13 @@ python -m scripts.train
 - [x] Model architecture (ViT-B/16 multi-task)
 - [x] Synthetic data generation pipeline
 - [x] Azure Data Lake integration
-- [ ] Airflow DAG orchestration
+- [x] Airflow DAG orchestration
 - [ ] Model training + MLflow tracking + Optuna HPO
 - [ ] Evaluation + Grad-CAM visualizations
 - [ ] Power BI dashboard
-- [ ] Flask API + Claude LLM integration
+- [ ] Pinecone indexing + sentence-transformer embeddings
+- [ ] LangGraph RAG pipeline + Claude integration
+- [ ] Flask API
 - [ ] Streamlit frontend
 - [ ] Docker + Azure Container Apps deployment
 - [ ] GitHub Actions CI/CD
