@@ -28,12 +28,13 @@ def build_loaders(cfg: dict) -> tuple[DataLoader, DataLoader]:
     size = cfg["data"]["image_size"]
     bs   = cfg["training"]["batch_size"]
     nw   = cfg["training"]["num_workers"]
+    pin  = cfg["training"]["device"] != "cpu"
 
     train_ds = PaintingDataset(root, "train", size)
     val_ds   = PaintingDataset(root, "val",   size)
 
-    train_dl = DataLoader(train_ds, batch_size=bs, shuffle=True,  num_workers=nw, pin_memory=True)
-    val_dl   = DataLoader(val_ds,   batch_size=bs, shuffle=False, num_workers=nw, pin_memory=True)
+    train_dl = DataLoader(train_ds, batch_size=bs, shuffle=True,  num_workers=nw, pin_memory=pin)
+    val_dl   = DataLoader(val_ds,   batch_size=bs, shuffle=False, num_workers=nw, pin_memory=pin)
 
     return train_dl, val_dl
 
@@ -49,7 +50,13 @@ def run_trial(trial: optuna.Trial, cfg: dict, train_dl: DataLoader, val_dl: Data
     with mlflow.start_run(run_name=f"trial-{trial.number}", nested=True):
         mlflow.log_params(trial.params)
 
-        model   = PaintingModel(freeze_layers=freeze, dropout=dropout)
+        model = PaintingModel(
+        freeze_layers=freeze,
+        n_styles=cfg["model"]["n_styles"],
+        n_artists=cfg["model"]["n_artists"],
+        n_genres=cfg["model"]["n_genres"],
+        dropout=dropout,
+        )
         trainer = Trainer(
             model        = model,
             train_dl     = train_dl,
@@ -83,9 +90,12 @@ def train_single(cfg: dict, train_dl: DataLoader, val_dl: DataLoader) -> None:
             **{f"w_{k}": v for k, v in lw.items()},
         })
 
-        model   = PaintingModel(
-            freeze_layers = m["freeze_layers"],
-            dropout       = m["dropout"],
+        model = PaintingModel(
+        freeze_layers=m["freeze_layers"],
+        n_styles=m["n_styles"],
+        n_artists=m["n_artists"],
+        n_genres=m["n_genres"],
+        dropout=m["dropout"],
         )
         trainer = Trainer(
             model        = model,

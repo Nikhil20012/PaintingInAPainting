@@ -9,6 +9,7 @@ azure:
 
 data:
   local_root: "data"
+  synthetic_root: "data/synthetic"
   image_size: 224
   alpha_min: 0.10
   alpha_max: 0.40
@@ -26,7 +27,7 @@ model:
 
 training:
   batch_size: 32
-  num_workers: 4
+  num_workers: 0
   epochs: 50
   learning_rate: 1.0e-4
   weight_decay: 1.0e-5

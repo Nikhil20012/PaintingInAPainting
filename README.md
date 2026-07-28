@@ -108,6 +108,8 @@ Built using a medallion architecture in Databricks Free Edition:
 
 ```
 PaintingInAPainting/
+├── app.py                        # Flask API for inference + RAG narrative
+├── streamlit_app.py              # Streamlit frontend
 ├── configs/
 │   └── default.yaml              # All config: Azure, model, training, MLflow, Optuna
 ├── dags/
@@ -136,11 +138,17 @@ PaintingInAPainting/
 │   ├── bronze_to_silver.py        # PySpark data cleaning
 │   ├── silver_to_gold.py          # PySpark balancing + label mapping
 │   ├── generate_dataset.py        # Synthetic data generation entry point
+│   ├── evaluate.py                # Test metrics + Grad-CAM visualizations
 │   ├── index_pinecone.py          # Embed and load art history into Pinecone
 │   ├── train.py                   # Training + Optuna HPO
-│   └── upload_gold_to_datalake.py # Azure Data Lake upload
+│   ├── upload_gold_to_datalake.py # Azure Data Lake upload
+│   └── upload_checkpoint.py       # Upload model checkpoint to Data Lake
+├── notebooks/
+│   ├── 01_bronze_ingest.ipynb     # Databricks Bronze layer audit
+│   ├── 02_bronze_to_silver.ipynb  # Databricks Silver layer cleaning
+│   └── 03_silver_to_gold.ipynb   # Databricks Gold layer balancing + labeling
 ├── docker-compose.yml             # Local Airflow setup
-└── notebooks/                     # Databricks notebooks (Bronze/Silver/Gold)
+└── requirements.txt               # All dependencies
 ```
 
 ---
@@ -185,12 +193,27 @@ python scripts/upload_gold_to_datalake.py
 
 **Index art history into Pinecone:**
 ```bash
-python scripts/index_pinecone.py
+PYTHONPATH=. python scripts/index_pinecone.py
 ```
 
 **Train:**
 ```bash
 python -m scripts.train
+```
+
+**Evaluate:**
+```bash
+PYTHONPATH=. python scripts/evaluate.py
+```
+
+**Run Flask API:**
+```bash
+PYTHONPATH=. python app.py
+```
+
+**Run Streamlit frontend:**
+```bash
+streamlit run streamlit_app.py
 ```
 
 ---
@@ -226,13 +249,13 @@ python -m scripts.train
 - [x] Synthetic data generation pipeline
 - [x] Azure Data Lake integration
 - [x] Airflow DAG orchestration
+- [x] Pinecone indexing + sentence-transformer embeddings
+- [x] LangGraph RAG pipeline + Claude integration
+- [x] Flask API
+- [x] Streamlit frontend
 - [ ] Model training + MLflow tracking + Optuna HPO
 - [ ] Evaluation + Grad-CAM visualizations
 - [ ] Power BI dashboard
-- [ ] Pinecone indexing + sentence-transformer embeddings
-- [ ] LangGraph RAG pipeline + Claude integration
-- [ ] Flask API
-- [ ] Streamlit frontend
 - [ ] Docker + Azure Container Apps deployment
 - [ ] GitHub Actions CI/CD
 

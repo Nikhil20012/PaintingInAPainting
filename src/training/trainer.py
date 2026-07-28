@@ -24,6 +24,7 @@ class Trainer:
         w_heatmap:    float,
         device:       str,
         ckpt_dir:     Path,
+        epochs:       int = 50,
     ):
         self.model    = model.to(device)
         self.device   = device
@@ -41,7 +42,7 @@ class Trainer:
 
         # cosine annealing smoothly reduces lr to near zero over training
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=50, eta_min=1e-6,
+            self.optimizer, T_max=epochs, eta_min=1e-6,
         )
 
         self.train_dl = train_dl

@@ -31,13 +31,14 @@ class MultiTaskLoss(nn.Module):
         self.w_hidden  = w_hidden
         self.w_heatmap = w_heatmap
 
-        self.ce       = nn.CrossEntropyLoss()
+        self.ce         = nn.CrossEntropyLoss()
+        self.ce_artist  = nn.CrossEntropyLoss(ignore_index=-1)
         self.bce      = nn.BCEWithLogitsLoss()
         self.dice_bce = DiceBCELoss()
 
     def forward(self, preds: dict, targets: dict) -> dict[str, torch.Tensor]:
         l_style   = self.ce(preds["style"],  targets["style"])
-        l_artist  = self.ce(preds["artist"], targets["artist"])
+        l_artist  = self.ce_artist(preds["artist"], targets["artist"])
         l_genre   = self.ce(preds["genre"],  targets["genre"])
         l_hidden  = self.bce(preds["hidden"], targets["hidden"])
         l_heatmap = self.dice_bce(preds["heatmap"], targets["heatmap"])
