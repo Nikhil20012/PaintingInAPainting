@@ -8,7 +8,7 @@ build/
 env/
 
 # Data — never push images or generated data
-data/
+/data/
 
 # MLflow
 mlruns/
