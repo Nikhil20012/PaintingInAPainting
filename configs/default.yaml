@@ -11,8 +11,8 @@ data:
   local_root: "data"
   synthetic_root: "data/synthetic"
   image_size: 224
-  alpha_min: 0.10
-  alpha_max: 0.40
+  alpha_min: 0.60
+  alpha_max: 0.90
   num_pairs: 50000
   train_split: 0.80
   val_split: 0.10

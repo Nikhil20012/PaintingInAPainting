@@ -100,7 +100,7 @@ Built using a medallion architecture in Databricks Free Edition:
 | Silver | 79,989 | Remove 22 phash duplicates + 44 uncertain artists, clean genres, filter extreme dimensions |
 | Gold | 47,780 | Cap large styles at 3,000, create label mappings, stratified 80/10/10 split |
 
-**Synthetic generation:** 50,000 composite triplets created by alpha-blending pairs of Gold paintings with spatially varying transparency (0.10-0.40) and aging noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
+**Synthetic generation:** 50,000 composite triplets created by alpha-blending pairs of Gold paintings with spatially varying transparency (0.60-0.90 top opacity, 10-40% hidden bleed-through) and aging noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
 
 ---
 
