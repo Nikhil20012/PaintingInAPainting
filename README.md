@@ -36,14 +36,13 @@ When a hidden layer is detected, the system retrieves relevant art history conte
 ## Architecture
 
 ```
-Databricks Free Edition
-    Bronze → Silver → Gold (PySpark notebooks)
+ADLS Gen2 (data lake — source of truth for all layers)
+    raw / bronze / silver / gold / synthetic / models
+         ↓                    ↑
+    Local PySpark ETL (read from ADLS, process, write back)
          ↓
-Airflow DAG (local orchestration)
-    Ingest → Clean → Label → Upload → Generate → Train → Evaluate → Deploy
-         ↓
-Azure Data Lake Gen2
-    painting-data / bronze / silver / gold / synthetic / models
+Airflow DAG (local orchestration via Docker Compose)
+    Upload Raw → Bronze → Silver → Gold → Generate → Train → Evaluate → Deploy
          ↓
 Model Training
     ViT-B/16 + Optuna HPO + MLflow tracking
@@ -80,7 +79,7 @@ Multi-task loss combines cross-entropy (style, artist, genre), BCE (hidden detec
 
 After the model produces predictions, the system generates a grounded narrative about the painting:
 
-1. **Embed** — predicted style, artist, and genre are used to query a Pinecone vector index containing 80K+ art history context chunks (artist bios, style descriptions, period information) embedded with sentence-transformers
+1. **Embed** — predicted style, artist, and genre are used to query a Pinecone vector index containing art history context chunks (artist bios, style descriptions, period information) embedded with sentence-transformers
 2. **Retrieve** — top-k relevant context chunks are pulled from Pinecone
 3. **Generate** — LangGraph orchestrates a workflow that passes retrieved context + model predictions to Claude API for narrative generation
 
@@ -92,7 +91,7 @@ This replaces a blind LLM call with a production RAG architecture where every ge
 
 **Source:** WikiArt dataset (81,444 images, 27 styles, 1,119 artists)
 
-Built using a medallion architecture in Databricks Free Edition:
+Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads from and writes back to ADLS, with local PySpark as the compute engine:
 
 | Layer | Rows | What happens |
 |---|---|---|
@@ -100,7 +99,7 @@ Built using a medallion architecture in Databricks Free Edition:
 | Silver | 79,989 | Remove 22 phash duplicates + 44 uncertain artists, clean genres, filter extreme dimensions |
 | Gold | 47,780 | Cap large styles at 3,000, create label mappings, stratified 80/10/10 split |
 
-**Synthetic generation:** 50,000 composite triplets created by alpha-blending pairs of Gold paintings with spatially varying transparency (0.60-0.90 top opacity, 10-40% hidden bleed-through) and aging noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
+**Synthetic generation:** 50,000 composite triplets created by alpha-blending pairs of Gold paintings with spatially varying transparency (0.60-0.90 top opacity, 10-40% hidden bleed-through) and Gaussian-smoothed spatial noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
 
 ---
 
@@ -113,9 +112,12 @@ PaintingInAPainting/
 ├── configs/
 │   └── default.yaml              # All config: Azure, model, training, MLflow, Optuna
 ├── dags/
-│   └── painting_pipeline.py      # Airflow DAG with 9 tasks
+│   └── painting_pipeline.py      # Airflow DAG with 10 tasks
 ├── data/
 │   ├── wikiart/                   # 81K raw images (gitignored)
+│   ├── raw/                       # Raw metadata (downloaded from ADLS)
+│   ├── bronze/                    # Bronze layer (profiled, schema applied)
+│   ├── silver/                    # Silver layer (cleaned, deduplicated)
 │   └── gold/labels/               # Gold CSVs with label mappings
 ├── src/
 │   ├── data/
@@ -130,23 +132,25 @@ PaintingInAPainting/
 │   │   ├── embeddings.py          # Sentence-transformer embedding pipeline
 │   │   ├── retriever.py           # Pinecone vector search
 │   │   └── graph.py               # LangGraph RAG orchestration workflow
-│   └── training/
-│       ├── losses.py              # Dice + BCE + CrossEntropy
-│       └── trainer.py             # Training loop + MLflow logging
+│   ├── training/
+│   │   ├── losses.py              # Dice + BCE + CrossEntropy
+│   │   └── trainer.py             # Training loop + MLflow logging
+│   └── utils/
+│       └── datalake.py            # Azure Data Lake upload/download utility
 ├── scripts/
-│   ├── bronze_ingest.py           # PySpark audit of raw data
-│   ├── bronze_to_silver.py        # PySpark data cleaning
-│   ├── silver_to_gold.py          # PySpark balancing + label mapping
+│   ├── upload_raw.py              # Upload raw metadata to ADLS
+│   ├── bronze_ingest.py           # ADLS raw → profile → ADLS bronze
+│   ├── bronze_to_silver.py        # ADLS bronze → clean → ADLS silver
+│   ├── silver_to_gold.py          # ADLS silver → balance/label → ADLS gold
 │   ├── generate_dataset.py        # Synthetic data generation entry point
 │   ├── evaluate.py                # Test metrics + Grad-CAM visualizations
 │   ├── index_pinecone.py          # Embed and load art history into Pinecone
 │   ├── train.py                   # Training + Optuna HPO
-│   ├── upload_gold_to_datalake.py # Azure Data Lake upload
-│   └── upload_checkpoint.py       # Upload model checkpoint to Data Lake
+│   └── upload_checkpoint.py       # Upload model checkpoint to ADLS
 ├── notebooks/
 │   ├── 01_bronze_ingest.ipynb     # Databricks Bronze layer audit
 │   ├── 02_bronze_to_silver.ipynb  # Databricks Silver layer cleaning
-│   └── 03_silver_to_gold.ipynb   # Databricks Gold layer balancing + labeling
+│   └── 03_silver_to_gold.ipynb    # Databricks Gold layer balancing + labeling
 ├── docker-compose.yml             # Local Airflow setup
 └── requirements.txt               # All dependencies
 ```
@@ -169,6 +173,7 @@ Create a `.env` file in the project root:
 AZURE_STORAGE_ACCOUNT_NAME=<your-account>
 AZURE_STORAGE_ACCOUNT_KEY=<your-key>
 PINECONE_API_KEY=<your-key>
+ANTHROPIC_API_KEY=<your-key>
 ```
 
 **Start Airflow (requires Docker):**
@@ -181,14 +186,21 @@ Dashboard at `http://localhost:8081` (admin / admin)
 
 ## Usage
 
+**Upload raw data to ADLS:**
+```bash
+PYTHONPATH=. python scripts/upload_raw.py
+```
+
+**Run ETL pipeline (or trigger via Airflow):**
+```bash
+PYTHONPATH=. python scripts/bronze_ingest.py
+PYTHONPATH=. python scripts/bronze_to_silver.py
+PYTHONPATH=. python scripts/silver_to_gold.py
+```
+
 **Generate synthetic dataset:**
 ```bash
 python -m scripts.generate_dataset
-```
-
-**Upload Gold labels to Azure Data Lake:**
-```bash
-python scripts/upload_gold_to_datalake.py
 ```
 
 **Index art history into Pinecone:**
@@ -275,5 +287,3 @@ MS Data Analytics Engineering, Northeastern University
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
