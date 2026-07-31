@@ -36,7 +36,7 @@ When a hidden layer is detected, the system retrieves relevant art history conte
 ## Architecture
 
 ```
-ADLS Gen2 (data lake — source of truth)
+ADLS Gen2 (data lake - source of truth)
     raw / bronze / silver / gold / models
          ↓                    ↑
     Local PySpark ETL (read from ADLS, process, write back)
@@ -85,9 +85,9 @@ Multi-task loss combines cross-entropy (style, artist, genre), BCE (hidden detec
 
 After the model produces predictions, the system generates a grounded narrative about the painting:
 
-1. **Embed** — predicted style, artist, and genre are used to query a Pinecone vector index containing art history context chunks (artist bios, style descriptions, period information) embedded with sentence-transformers
-2. **Retrieve** — top-k relevant context chunks are pulled from Pinecone
-3. **Generate** — LangGraph orchestrates a workflow that passes retrieved context + model predictions to Claude API for narrative generation
+1. **Embed** - predicted style, artist, and genre are used to query a Pinecone vector index containing art history context chunks (artist bios, style descriptions, period information) embedded with sentence-transformers
+2. **Retrieve** - top-k relevant context chunks are pulled from Pinecone
+3. **Generate** - LangGraph orchestrates a workflow that passes retrieved context + model predictions to Claude API for narrative generation
 
 This replaces a blind LLM call with a production RAG architecture where every generated narrative is grounded in real art history context.
 
