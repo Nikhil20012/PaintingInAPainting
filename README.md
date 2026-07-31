@@ -64,6 +64,16 @@ Airflow orchestrates the ETL pipeline locally. The downstream ML pipeline (synth
 
 ---
 
+## Design Decisions
+
+- **Why synthetic data?** Real X-ray ground truth for hidden paintings is scarce (a few hundred known examples worldwide). Alpha compositing provides scalable, labeled supervision without specialized imaging equipment.
+- **Why ViT?** Global self-attention captures long-range visual relationships across the full painting surface, and the dual output (CLS token + patch embeddings) naturally supports both classification and spatial localization in a single backbone.
+- **Why ADLS + PySpark?** Cloud-backed staged ETL preserves the medallion architecture despite compute constraints. The original design targeted Azure Databricks with Delta tables; the local PySpark implementation maintains the same staged pipeline while keeping ADLS as the source of truth.
+- **Why RAG?** Grounding narratives in retrieved art-history context produces specific, factual outputs instead of generic LLM completions. The retrieval step makes the system auditable since you can inspect what context informed each narrative.
+- **Why multi-task learning?** Joint supervision across style, artist, genre, hidden detection, and spatial localization forces the encoder to learn richer shared representations than any single task would produce. The auxiliary classification tasks regularize the hidden detection objective.
+
+---
+
 ## Model
 
 The model uses a pretrained ViT-B/16 backbone with two output heads:
