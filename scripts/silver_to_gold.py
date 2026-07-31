@@ -1,4 +1,4 @@
-"""Silver to Gold — balance, label, stratify, and export ML-ready dataset."""
+"""Silver to Gold — download silver from ADLS, balance, label, split, upload back."""
 
 from pathlib import Path
 
@@ -7,8 +7,17 @@ from pyspark.sql.functions import col, count, lit, rand, row_number, udf
 from pyspark.sql.types import IntegerType
 from pyspark.sql.window import Window
 
+from src.utils.datalake import DataLakeClient
+
 
 def main() -> None:
+    lake = DataLakeClient()
+
+    # download silver from ADLS
+    local_silver = Path("data/silver/silver_wikiart.csv")
+    print("Downloading Silver from ADLS...")
+    lake.download_file("silver/wikiart/silver_wikiart.csv", local_silver)
+
     spark = SparkSession.builder \
         .appName("PaintingInAPainting-SilverToGold") \
         .master("local[*]") \
@@ -17,7 +26,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
 
     # load silver data
-    df = spark.read.csv("data/silver", header=True, inferSchema=True)
+    df = spark.read.csv(str(local_silver), header=True, inferSchema=True)
     print(f"Silver rows: {df.count()}")
 
     # cap each style at 3000 images to reduce class imbalance
@@ -77,7 +86,7 @@ def main() -> None:
     print(f"Test: {df_test.count()}")
     print(f"Total: {df_gold.count()}")
 
-    # save gold dataset and mappings as CSVs
+    # save gold dataset and mappings locally
     out = Path("data/gold/labels")
     out.mkdir(parents=True, exist_ok=True)
 
@@ -94,15 +103,23 @@ def main() -> None:
     spark.createDataFrame(genre_rows, ["genre", "genre_idx"]) \
         .toPandas().to_csv(out / "gold_genre_mapping.csv", index=False)
 
-    print(f"\nGold data saved to {out}")
+    print(f"\nGold saved locally to {out}")
 
     # final verification
-    print(f"\nUnique styles: {df_gold.select('style').distinct().count()}")
+    print(f"Unique styles: {df_gold.select('style').distinct().count()}")
     print(f"Unique artists: {df_gold.select('artist').distinct().count()}")
     print(f"Unique genres: {df_gold.select('primary_genre').distinct().count()}")
     df_gold.groupBy("split").agg(count("*").alias("count")).orderBy("split").show()
 
     spark.stop()
+
+    # upload gold to ADLS
+    print("Uploading Gold to ADLS...")
+    lake.upload_file(out / "gold_wikiart.csv", "gold/wikiart/labels/gold_wikiart.csv")
+    lake.upload_file(out / "gold_style_mapping.csv", "gold/wikiart/labels/gold_style_mapping.csv")
+    lake.upload_file(out / "gold_artist_mapping.csv", "gold/wikiart/labels/gold_artist_mapping.csv")
+    lake.upload_file(out / "gold_genre_mapping.csv", "gold/wikiart/labels/gold_genre_mapping.csv")
+    print("Done.")
 
 
 if __name__ == "__main__":

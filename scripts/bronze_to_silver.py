@@ -1,10 +1,21 @@
-"""Bronze to Silver — clean, deduplicate, and standardize WikiArt metadata."""
+"""Bronze to Silver — download bronze from ADLS, clean, persist, upload back."""
+
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, regexp_replace, split, trim
 
+from src.utils.datalake import DataLakeClient
+
 
 def main() -> None:
+    lake = DataLakeClient()
+
+    # download bronze from ADLS
+    local_bronze = Path("data/bronze/bronze_wikiart.csv")
+    print("Downloading Bronze from ADLS...")
+    lake.download_file("bronze/wikiart/bronze_wikiart.csv", local_bronze)
+
     spark = SparkSession.builder \
         .appName("PaintingInAPainting-BronzeToSilver") \
         .master("local[*]") \
@@ -13,11 +24,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
 
     # load bronze data
-    df = spark.read.csv(
-        "data/wikiart/classes.csv",
-        header=True,
-        inferSchema=True,
-    )
+    df = spark.read.csv(str(local_bronze), header=True, inferSchema=True)
     print(f"Bronze rows: {df.count()}")
 
     # extract style from filename
@@ -31,7 +38,7 @@ def main() -> None:
     df = df.dropDuplicates(["phash"])
     print(f"After removing duplicates: {df.count()}")
 
-    # clean genre column — extract primary genre from messy string format
+    # clean genre column
     df = df.withColumn(
         "primary_genre",
         regexp_replace(
@@ -70,17 +77,23 @@ def main() -> None:
         "subset",
     )
 
-    # save as silver CSV
-    df_silver.coalesce(1).write.mode("overwrite").option("header", True).csv("data/silver")
-    print(f"Silver saved. Rows: {df_silver.count()}")
+    # persist silver locally
+    silver_dir = Path("data/silver")
+    silver_dir.mkdir(parents=True, exist_ok=True)
+    df_silver.toPandas().to_csv(silver_dir / "silver_wikiart.csv", index=False)
+    print(f"Silver saved locally. Rows: {df_silver.count()}")
 
     # final check
     print(f"Unique styles: {df_silver.select('style').distinct().count()}")
     print(f"Unique artists: {df_silver.select('artist').distinct().count()}")
     print(f"Unique genres: {df_silver.select('primary_genre').distinct().count()}")
-    df_silver.show(5, truncate=False)
 
     spark.stop()
+
+    # upload silver to ADLS
+    print("Uploading Silver to ADLS...")
+    lake.upload_file(silver_dir / "silver_wikiart.csv", "silver/wikiart/silver_wikiart.csv")
+    print("Done.")
 
 
 if __name__ == "__main__":

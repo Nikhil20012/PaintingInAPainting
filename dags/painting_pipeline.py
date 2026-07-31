@@ -1,8 +1,8 @@
 """
 Painting in a Painting — Airflow DAG
 
-Full pipeline: data engineering → synthetic generation → training →
-evaluation → deployment. Triggered manually (not scheduled).
+Full pipeline: raw upload → data engineering → synthetic generation →
+training → evaluation → deployment. Triggered manually (not scheduled).
 """
 
 from datetime import datetime, timedelta
@@ -30,31 +30,31 @@ with DAG(
 ) as dag:
 
     # ──────────────────────────────────────────────
-    # Phase 1 — Data Engineering (PySpark)
+    # Phase 0 — Upload raw data to ADLS
+    # ──────────────────────────────────────────────
+
+    upload_raw = BashOperator(
+        task_id="upload_raw",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/upload_raw.py",
+    )
+
+    # ──────────────────────────────────────────────
+    # Phase 1 — Data Engineering (PySpark + ADLS)
     # ──────────────────────────────────────────────
 
     bronze_ingest = BashOperator(
         task_id="bronze_ingest",
-        bash_command="cd /opt/airflow && python scripts/bronze_ingest.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/bronze_ingest.py",
     )
 
     bronze_to_silver = BashOperator(
         task_id="bronze_to_silver",
-        bash_command="cd /opt/airflow && python scripts/bronze_to_silver.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/bronze_to_silver.py",
     )
 
     silver_to_gold = BashOperator(
         task_id="silver_to_gold",
-        bash_command="cd /opt/airflow && python scripts/silver_to_gold.py",
-    )
-
-    # ──────────────────────────────────────────────
-    # Phase 1.5 — Upload Gold to Azure Data Lake
-    # ──────────────────────────────────────────────
-
-    upload_gold = BashOperator(
-        task_id="upload_gold_to_datalake",
-        bash_command="cd /opt/airflow && python scripts/upload_gold_to_datalake.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/silver_to_gold.py",
     )
 
     # ──────────────────────────────────────────────
@@ -63,7 +63,7 @@ with DAG(
 
     generate_dataset = BashOperator(
         task_id="generate_dataset",
-        bash_command="cd /opt/airflow && python -m scripts.generate_dataset",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python -m scripts.generate_dataset",
     )
 
     # ──────────────────────────────────────────────
@@ -72,8 +72,7 @@ with DAG(
 
     train = BashOperator(
         task_id="train",
-        bash_command="cd /opt/airflow && python -m scripts.train",
-        # training can take hours — extend timeout
+        bash_command="cd /opt/airflow && PYTHONPATH=. python -m scripts.train",
         execution_timeout=timedelta(hours=12),
     )
 
@@ -83,7 +82,7 @@ with DAG(
 
     evaluate = BashOperator(
         task_id="evaluate",
-        bash_command="cd /opt/airflow && python scripts/evaluate.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/evaluate.py",
     )
 
     # ──────────────────────────────────────────────
@@ -92,7 +91,7 @@ with DAG(
 
     upload_checkpoint = BashOperator(
         task_id="upload_checkpoint",
-        bash_command="cd /opt/airflow && python scripts/upload_checkpoint.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/upload_checkpoint.py",
     )
 
     # ──────────────────────────────────────────────
@@ -101,7 +100,7 @@ with DAG(
 
     deploy = BashOperator(
         task_id="deploy",
-        bash_command="cd /opt/airflow && python scripts/deploy.py",
+        bash_command="cd /opt/airflow && PYTHONPATH=. python scripts/deploy.py",
     )
 
     # ──────────────────────────────────────────────
@@ -109,10 +108,10 @@ with DAG(
     # ──────────────────────────────────────────────
 
     (
-        bronze_ingest
+        upload_raw
+        >> bronze_ingest
         >> bronze_to_silver
         >> silver_to_gold
-        >> upload_gold
         >> generate_dataset
         >> train
         >> evaluate

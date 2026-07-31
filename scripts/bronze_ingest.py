@@ -1,12 +1,23 @@
-"""Bronze layer audit — profile the raw WikiArt metadata."""
+"""Bronze layer — download raw from ADLS, profile, persist, upload back."""
+
+from pathlib import Path
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     avg, col, count, countDistinct, max, min, round, split,
 )
 
+from src.utils.datalake import DataLakeClient
+
 
 def main() -> None:
+    lake = DataLakeClient()
+
+    # download raw metadata from ADLS
+    local_raw = Path("data/raw/classes.csv")
+    print("Downloading raw metadata from ADLS...")
+    lake.download_file("raw/wikiart/classes.csv", local_raw)
+
     spark = SparkSession.builder \
         .appName("PaintingInAPainting-BronzeIngest") \
         .master("local[*]") \
@@ -14,19 +25,14 @@ def main() -> None:
 
     spark.sparkContext.setLogLevel("WARN")
 
-    # load raw metadata CSV
-    df = spark.read.csv(
-        "data/wikiart/classes.csv",
-        header=True,
-        inferSchema=True,
-    )
-
+    # load raw metadata
+    df = spark.read.csv(str(local_raw), header=True, inferSchema=True)
     total = df.count()
     print(f"\nTotal rows: {total:,}")
     df.printSchema()
     df.show(5, truncate=False)
 
-    # extract style from filename (folder before '/')
+    # extract style from filename
     df = df.withColumn("styles", split(col("filename"), "/")[0])
 
     # style distribution
@@ -80,7 +86,18 @@ def main() -> None:
     print(f"Unique genre strings: {unique_genres}")
     print(f"Phash duplicates: {duplicates}")
 
+    # persist bronze layer locally
+    bronze_dir = Path("data/bronze")
+    bronze_dir.mkdir(parents=True, exist_ok=True)
+    df.toPandas().to_csv(bronze_dir / "bronze_wikiart.csv", index=False)
+    print(f"\nBronze saved locally to {bronze_dir}")
+
     spark.stop()
+
+    # upload bronze to ADLS
+    print("Uploading Bronze to ADLS...")
+    lake.upload_file(bronze_dir / "bronze_wikiart.csv", "bronze/wikiart/bronze_wikiart.csv")
+    print("Done.")
 
 
 if __name__ == "__main__":
