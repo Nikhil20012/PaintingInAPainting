@@ -36,13 +36,15 @@ When a hidden layer is detected, the system retrieves relevant art history conte
 ## Architecture
 
 ```
-ADLS Gen2 (data lake — source of truth for all layers)
-    raw / bronze / silver / gold / synthetic / models
+ADLS Gen2 (data lake — source of truth)
+    raw / bronze / silver / gold / models
          ↓                    ↑
     Local PySpark ETL (read from ADLS, process, write back)
          ↓
 Airflow DAG (local orchestration via Docker Compose)
-    Upload Raw → Bronze → Silver → Gold → Generate → Train → Evaluate → Deploy
+    Upload Raw → Bronze → Silver → Gold
+         ↓
+Synthetic Dataset Generation (local)
          ↓
 Model Training
     ViT-B/16 + Optuna HPO + MLflow tracking
@@ -55,6 +57,10 @@ Deployment
     Streamlit frontend → Streamlit Community Cloud
     CI/CD → GitHub Actions
 ```
+
+The original design used Azure Databricks with Delta tables for the ETL pipeline. Due to Azure student subscription compute limitations, the ETL logic was migrated into standalone PySpark jobs while preserving the same staged architecture. The Databricks notebooks remain in the repository as the reference implementation.
+
+Airflow orchestrates the ETL pipeline locally. The downstream ML pipeline (synthetic generation, training, evaluation) can be executed independently or integrated into the DAG depending on the execution environment.
 
 ---
 
@@ -91,7 +97,7 @@ This replaces a blind LLM call with a production RAG architecture where every ge
 
 **Source:** WikiArt dataset (81,444 images, 27 styles, 1,119 artists)
 
-Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads from and writes back to ADLS, with local PySpark as the compute engine:
+Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads its input layer from ADLS, performs the transformation locally using PySpark, and persists the next layer back to ADLS:
 
 | Layer | Rows | What happens |
 |---|---|---|
@@ -99,7 +105,7 @@ Built using a medallion architecture with Azure Data Lake Gen2 as the storage la
 | Silver | 79,989 | Remove 22 phash duplicates + 44 uncertain artists, clean genres, filter extreme dimensions |
 | Gold | 47,780 | Cap large styles at 3,000, create label mappings, stratified 80/10/10 split |
 
-**Synthetic generation:** 50,000 composite triplets created by alpha-blending pairs of Gold paintings with spatially varying transparency (0.60-0.90 top opacity, 10-40% hidden bleed-through) and Gaussian-smoothed spatial noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
+**Synthetic generation:** 50,000 composite triplets created locally by alpha-blending pairs of Gold paintings with spatially varying transparency (0.60-0.90 top opacity, 10-40% hidden bleed-through) and Gaussian-smoothed spatial noise. Each triplet produces a composite image, ground truth mask, and full label metadata. Pairs are sampled within the same split to prevent data leakage.
 
 ---
 
@@ -112,13 +118,13 @@ PaintingInAPainting/
 ├── configs/
 │   └── default.yaml              # All config: Azure, model, training, MLflow, Optuna
 ├── dags/
-│   └── painting_pipeline.py      # Airflow DAG with 10 tasks
+│   └── painting_pipeline.py      # Airflow orchestration DAG
 ├── data/
 │   ├── wikiart/                   # 81K raw images (gitignored)
-│   ├── raw/                       # Raw metadata (downloaded from ADLS)
-│   ├── bronze/                    # Bronze layer (profiled, schema applied)
-│   ├── silver/                    # Silver layer (cleaned, deduplicated)
-│   └── gold/labels/               # Gold CSVs with label mappings
+│   ├── raw/                       # Local cache (downloaded from ADLS raw)
+│   ├── bronze/                    # Local cache (downloaded from ADLS bronze)
+│   ├── silver/                    # Local cache (downloaded from ADLS silver)
+│   └── gold/labels/               # Local cache (downloaded from ADLS gold)
 ├── src/
 │   ├── data/
 │   │   ├── blend.py               # Synthetic alpha compositing
