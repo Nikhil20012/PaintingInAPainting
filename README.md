@@ -80,7 +80,7 @@ The model uses a pretrained ViT-B/16 backbone with two output heads:
 
 **Classification head** (from CLS token):
 - Style classification (27 classes)
-- Artist classification (856 classes)
+- Artist classification (843 classes)
 - Genre classification (27 classes)
 - Hidden layer detection (binary)
 
