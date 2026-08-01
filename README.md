@@ -107,11 +107,11 @@ This replaces a blind LLM call with a production RAG architecture where every ge
 
 **Source:** WikiArt dataset (81,444 images, 27 styles, 1,119 artists)
 
-Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads its input layer from ADLS, performs the transformation locally using PySpark, and persists the next layer back to ADLS:
+Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads its input layer from ADLS, performs the transformation locally using PySpark, and persists the next layer back to ADLS. Internal pipeline format is Raw (CSV) to Bronze/Silver/Gold (Parquet):
 
 | Layer | Rows | What happens |
 |---|---|---|
-| Bronze | 80,042 | Raw audit: class imbalance analysis, duplicate detection, dimension profiling |
+| Bronze | 80,042 | Schema validation, required column checks, ingestion metadata, data quality reporting |
 | Silver | 79,989 | Remove 22 phash duplicates + 44 uncertain artists, clean genres, filter extreme dimensions |
 | Gold | 47,776 | Cap large styles at 3,000, create label mappings, stratified 80/10/10 split |
 
@@ -132,9 +132,11 @@ PaintingInAPainting/
 ├── data/
 │   ├── wikiart/                   # 81K raw images (gitignored)
 │   ├── raw/                       # Local cache (downloaded from ADLS raw)
-│   ├── bronze/                    # Local cache (downloaded from ADLS bronze)
-│   ├── silver/                    # Local cache (downloaded from ADLS silver)
-│   └── gold/labels/               # Local cache (downloaded from ADLS gold)
+│   ├── bronze/                    # Bronze Parquet + quality report (synced with ADLS)
+│   ├── silver/                    # Silver Parquet (synced with ADLS)
+│   └── gold/
+│       ├── parquet/               # Gold Parquet (pipeline consistency)
+│       └── labels/                # Gold CSVs (downstream ML compatibility)
 ├── src/
 │   ├── data/
 │   │   ├── blend.py               # Synthetic alpha compositing
@@ -155,9 +157,9 @@ PaintingInAPainting/
 │       └── datalake.py            # Azure Data Lake upload/download utility
 ├── scripts/
 │   ├── upload_raw.py              # Upload raw metadata to ADLS
-│   ├── bronze_ingest.py           # ADLS raw → profile → ADLS bronze
-│   ├── bronze_to_silver.py        # ADLS bronze → clean → ADLS silver
-│   ├── silver_to_gold.py          # ADLS silver → balance/label → ADLS gold
+│   ├── bronze_ingest.py           # ADLS raw → validate + audit → ADLS bronze (Parquet)
+│   ├── bronze_to_silver.py        # ADLS bronze → clean → ADLS silver (Parquet)
+│   ├── silver_to_gold.py          # ADLS silver → balance/label → ADLS gold (Parquet + CSV)
 │   ├── generate_dataset.py        # Synthetic data generation entry point
 │   ├── evaluate.py                # Test metrics + Grad-CAM visualizations
 │   ├── index_pinecone.py          # Embed and load art history into Pinecone

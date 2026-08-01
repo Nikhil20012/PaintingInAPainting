@@ -1,20 +1,39 @@
-"""Bronze to Silver — download bronze from ADLS, clean, persist, upload back."""
+"""Bronze to Silver - read Bronze Parquet from ADLS, clean, persist Silver Parquet back.
 
+Silver is the cleaning layer. It reads the validated Bronze data and applies:
+- Duplicate removal (phash)
+- Invalid row removal (uncertain artists)
+- Genre string cleaning
+- Artist name standardization
+- Dimension filtering
+
+Pipeline format: Raw (CSV) -> Bronze (Parquet) -> Silver (Parquet) -> Gold (Parquet + CSV)
+"""
+
+import shutil
 from pathlib import Path
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, regexp_replace, split, trim
+from pyspark.sql.functions import col, count, regexp_replace, split, trim
 
 from src.utils.datalake import DataLakeClient
+
+
+def find_part_file(spark_output_dir: Path, extension: str) -> Path:
+    """Find the single part file in a Spark output directory."""
+    for f in spark_output_dir.iterdir():
+        if f.name.startswith("part-") and f.name.endswith(extension):
+            return f
+    raise FileNotFoundError(f"No {extension} part file found in {spark_output_dir}")
 
 
 def main() -> None:
     lake = DataLakeClient()
 
-    # download bronze from ADLS
-    local_bronze = Path("data/bronze/bronze_wikiart.csv")
+    # download bronze parquet from ADLS
+    local_bronze = Path("data/bronze/bronze_wikiart.parquet")
     print("Downloading Bronze from ADLS...")
-    lake.download_file("bronze/wikiart/bronze_wikiart.csv", local_bronze)
+    lake.download_file("bronze/wikiart/bronze_wikiart.parquet", local_bronze)
 
     spark = SparkSession.builder \
         .appName("PaintingInAPainting-BronzeToSilver") \
@@ -23,8 +42,8 @@ def main() -> None:
 
     spark.sparkContext.setLogLevel("WARN")
 
-    # load bronze data
-    df = spark.read.csv(str(local_bronze), header=True, inferSchema=True)
+    # read bronze parquet
+    df = spark.read.parquet(str(local_bronze))
     print(f"Bronze rows: {df.count()}")
 
     # extract style from filename
@@ -77,13 +96,18 @@ def main() -> None:
         "subset",
     )
 
-    # persist silver locally
+    # persist silver as parquet
     silver_dir = Path("data/silver")
-    silver_dir.mkdir(parents=True, exist_ok=True)
-    df_silver.toPandas().to_csv(silver_dir / "silver_wikiart.csv", index=False)
-    print(f"Silver saved locally. Rows: {df_silver.count()}")
+    spark_tmp = silver_dir / "_spark_output"
+    df_silver.coalesce(1).write.mode("overwrite").parquet(str(spark_tmp))
 
-    # final check
+    part_file = find_part_file(spark_tmp, ".parquet")
+    clean_path = silver_dir / "silver_wikiart.parquet"
+    shutil.copy2(str(part_file), str(clean_path))
+    shutil.rmtree(str(spark_tmp))
+
+    print(f"Silver saved locally. Rows: {df_silver.count()}")
+    print(f"  Format: Parquet")
     print(f"Unique styles: {df_silver.select('style').distinct().count()}")
     print(f"Unique artists: {df_silver.select('artist').distinct().count()}")
     print(f"Unique genres: {df_silver.select('primary_genre').distinct().count()}")
@@ -92,7 +116,7 @@ def main() -> None:
 
     # upload silver to ADLS
     print("Uploading Silver to ADLS...")
-    lake.upload_file(silver_dir / "silver_wikiart.csv", "silver/wikiart/silver_wikiart.csv")
+    lake.upload_file(clean_path, "silver/wikiart/silver_wikiart.parquet")
     print("Done.")
 
 

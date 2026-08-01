@@ -1,5 +1,15 @@
-"""Silver to Gold — download silver from ADLS, balance, label, split, upload back."""
+"""Silver to Gold - read Silver Parquet from ADLS, balance, label, split, persist back.
 
+Gold is the ML-ready layer. It reads cleaned Silver data and applies:
+- Class balancing (cap styles at 3000)
+- Integer label encoding (style, artist, genre)
+- Stratified train/val/test split (80/10/10)
+
+Output: Parquet for pipeline consistency + CSV for downstream ML code compatibility.
+Pipeline format: Raw (CSV) -> Bronze (Parquet) -> Silver (Parquet) -> Gold (Parquet + CSV)
+"""
+
+import shutil
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -10,13 +20,21 @@ from pyspark.sql.window import Window
 from src.utils.datalake import DataLakeClient
 
 
+def find_part_file(spark_output_dir: Path, extension: str) -> Path:
+    """Find the single part file in a Spark output directory."""
+    for f in spark_output_dir.iterdir():
+        if f.name.startswith("part-") and f.name.endswith(extension):
+            return f
+    raise FileNotFoundError(f"No {extension} part file found in {spark_output_dir}")
+
+
 def main() -> None:
     lake = DataLakeClient()
 
-    # download silver from ADLS
-    local_silver = Path("data/silver/silver_wikiart.csv")
+    # download silver parquet from ADLS
+    local_silver = Path("data/silver/silver_wikiart.parquet")
     print("Downloading Silver from ADLS...")
-    lake.download_file("silver/wikiart/silver_wikiart.csv", local_silver)
+    lake.download_file("silver/wikiart/silver_wikiart.parquet", local_silver)
 
     spark = SparkSession.builder \
         .appName("PaintingInAPainting-SilverToGold") \
@@ -25,8 +43,8 @@ def main() -> None:
 
     spark.sparkContext.setLogLevel("WARN")
 
-    # load silver data
-    df = spark.read.csv(str(local_silver), header=True, inferSchema=True)
+    # read silver parquet
+    df = spark.read.parquet(str(local_silver))
     print(f"Silver rows: {df.count()}")
 
     # cap each style at 3000 images to reduce class imbalance
@@ -86,24 +104,38 @@ def main() -> None:
     print(f"Test: {df_test.count()}")
     print(f"Total: {df_gold.count()}")
 
-    # save gold dataset and mappings locally
-    out = Path("data/gold/labels")
-    out.mkdir(parents=True, exist_ok=True)
+    # persist gold as parquet (pipeline consistency)
+    gold_dir = Path("data/gold")
+    spark_tmp = gold_dir / "_spark_output"
+    df_gold.coalesce(1).write.mode("overwrite").parquet(str(spark_tmp))
 
-    df_gold.toPandas().to_csv(out / "gold_wikiart.csv", index=False)
+    parquet_dir = gold_dir / "parquet"
+    parquet_dir.mkdir(parents=True, exist_ok=True)
+    part_file = find_part_file(spark_tmp, ".parquet")
+    gold_parquet = parquet_dir / "gold_wikiart.parquet"
+    shutil.copy2(str(part_file), str(gold_parquet))
+    shutil.rmtree(str(spark_tmp))
 
+    # persist gold as CSV (downstream ML code compatibility)
+    csv_dir = gold_dir / "labels"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    df_gold.toPandas().to_csv(csv_dir / "gold_wikiart.csv", index=False)
+
+    # save mapping CSVs (small reference files, CSV is appropriate)
     style_rows = [(k, v) for k, v in style_mapping.items()]
     genre_rows = [(k, v) for k, v in genre_mapping.items()]
     artist_rows = [(k, v) for k, v in artist_mapping.items()]
 
     spark.createDataFrame(style_rows, ["style", "style_idx"]) \
-        .toPandas().to_csv(out / "gold_style_mapping.csv", index=False)
+        .toPandas().to_csv(csv_dir / "gold_style_mapping.csv", index=False)
     spark.createDataFrame(artist_rows, ["artist", "artist_idx"]) \
-        .toPandas().to_csv(out / "gold_artist_mapping.csv", index=False)
+        .toPandas().to_csv(csv_dir / "gold_artist_mapping.csv", index=False)
     spark.createDataFrame(genre_rows, ["genre", "genre_idx"]) \
-        .toPandas().to_csv(out / "gold_genre_mapping.csv", index=False)
+        .toPandas().to_csv(csv_dir / "gold_genre_mapping.csv", index=False)
 
-    print(f"\nGold saved locally to {out}")
+    print(f"\nGold saved locally")
+    print(f"  Parquet: {gold_parquet}")
+    print(f"  CSVs: {csv_dir}")
 
     # final verification
     print(f"Unique styles: {df_gold.select('style').distinct().count()}")
@@ -115,10 +147,11 @@ def main() -> None:
 
     # upload gold to ADLS
     print("Uploading Gold to ADLS...")
-    lake.upload_file(out / "gold_wikiart.csv", "gold/wikiart/labels/gold_wikiart.csv")
-    lake.upload_file(out / "gold_style_mapping.csv", "gold/wikiart/labels/gold_style_mapping.csv")
-    lake.upload_file(out / "gold_artist_mapping.csv", "gold/wikiart/labels/gold_artist_mapping.csv")
-    lake.upload_file(out / "gold_genre_mapping.csv", "gold/wikiart/labels/gold_genre_mapping.csv")
+    lake.upload_file(gold_parquet, "gold/wikiart/gold_wikiart.parquet")
+    lake.upload_file(csv_dir / "gold_wikiart.csv", "gold/wikiart/labels/gold_wikiart.csv")
+    lake.upload_file(csv_dir / "gold_style_mapping.csv", "gold/wikiart/labels/gold_style_mapping.csv")
+    lake.upload_file(csv_dir / "gold_artist_mapping.csv", "gold/wikiart/labels/gold_artist_mapping.csv")
+    lake.upload_file(csv_dir / "gold_genre_mapping.csv", "gold/wikiart/labels/gold_genre_mapping.csv")
     print("Done.")
 
 
