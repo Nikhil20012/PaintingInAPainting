@@ -36,22 +36,39 @@ When a hidden layer is detected, the system retrieves relevant art history conte
 ## Architecture
 
 ```
-ADLS Gen2 (data lake - source of truth)
-    raw / bronze / silver / gold / models
-         ↓                    ↑
-    Local PySpark ETL (read from ADLS, process, write back)
-         ↓
+ADLS Gen2 (source of truth)
+      │
+  Raw (CSV)
+      │
+      ▼
+  Bronze (Parquet) - schema validation, ingestion metadata, quality report
+      │
+      ▼
+  Silver (Parquet) - deduplication, cleaning, filtering
+      │
+      ▼
+  Gold (Parquet + CSV export) - balancing, label encoding, stratified split
+      │
+      ▼
+Local PySpark ETL (read from ADLS, process, write back)
+      │
+      ▼
 Airflow DAG (local orchestration via Docker Compose)
     Upload Raw → Bronze → Silver → Gold
-         ↓
+      │
+      ▼
 Synthetic Dataset Generation (local)
-         ↓
+    Gold CSV → alpha-composited training pairs
+      │
+      ▼
 Model Training
     ViT-B/16 + Optuna HPO + MLflow tracking
-         ↓
+      │
+      ▼
 RAG Pipeline
     Model predictions → Pinecone retrieval → LangGraph → Claude narrative
-         ↓
+      │
+      ▼
 Deployment
     Flask API → Azure Container Apps
     Streamlit frontend → Streamlit Community Cloud
@@ -61,6 +78,8 @@ Deployment
 The original design used Azure Databricks with Delta tables for the ETL pipeline. Due to Azure student subscription compute limitations, the ETL logic was migrated into standalone PySpark jobs while preserving the same staged architecture. The Databricks notebooks remain in the repository as the reference implementation.
 
 Airflow orchestrates the ETL pipeline locally. The downstream ML pipeline (synthetic generation, training, evaluation) can be executed independently or integrated into the DAG depending on the execution environment.
+
+During inference, the ETL pipeline is bypassed. The deployed Flask API loads the trained ViT checkpoint, performs prediction on the input image, retrieves supporting context from Pinecone, and generates a grounded narrative through the LangGraph RAG workflow.
 
 ---
 
@@ -107,7 +126,7 @@ This replaces a blind LLM call with a production RAG architecture where every ge
 
 **Source:** WikiArt dataset (81,444 images, 27 styles, 1,119 artists)
 
-Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads its input layer from ADLS, performs the transformation locally using PySpark, and persists the next layer back to ADLS. Internal pipeline format is Raw (CSV) to Bronze/Silver/Gold (Parquet):
+Built using a medallion architecture with Azure Data Lake Gen2 as the storage layer. Each ETL stage reads its input layer from ADLS, performs the transformation locally using PySpark, and persists the next layer back to ADLS. The ingestion layer accepts CSV metadata from the source dataset, while all downstream Spark processing persists Bronze, Silver, and Gold as Parquet. Gold additionally exports CSV label files for the PyTorch training pipeline:
 
 | Layer | Rows | What happens |
 |---|---|---|
@@ -253,7 +272,8 @@ streamlit run streamlit_app.py
 | Layer | Technology |
 |---|---|
 | Data storage | Azure Data Lake Gen2 |
-| Data processing | PySpark (Databricks Free Edition) |
+| Data processing | PySpark |
+| Development notebooks | Azure Databricks Free Edition |
 | Orchestration | Apache Airflow (Docker Compose) |
 | ML framework | PyTorch + torchvision |
 | Model | ViT-B/16 (pretrained, fine-tuned) |
