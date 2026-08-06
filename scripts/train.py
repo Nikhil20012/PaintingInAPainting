@@ -48,7 +48,13 @@ def run_trial(trial: optuna.Trial, cfg: dict, train_dl: DataLoader, val_dl: Data
     w_heatmap    = trial.suggest_float("w_heatmap",    1.0, 6.0)
 
     with mlflow.start_run(run_name=f"trial-{trial.number}", nested=True):
-        mlflow.log_params(trial.params)
+        mlflow.log_params({
+            "dataset_size":    cfg["data"]["num_pairs"],
+            "mixup_alpha":     0.2,
+            "label_smoothing": 0.1,
+            "early_stopping_patience": 7,
+            "augmentation":    "RandomResizedCrop, RandomHorizontalFlip, ColorJitter, RandomAffine, RandomErasing",
+        })
 
         model = PaintingModel(
         freeze_layers=freeze,
@@ -81,12 +87,17 @@ def train_single(cfg: dict, train_dl: DataLoader, val_dl: DataLoader) -> None:
 
     with mlflow.start_run(run_name=cfg["mlflow"]["run_name"]):
         mlflow.log_params({
-            "lr":           t["learning_rate"],
-            "weight_decay": t["weight_decay"],
-            "batch_size":   t["batch_size"],
-            "epochs":       t["epochs"],
-            "freeze_layers": m["freeze_layers"],
-            "dropout":      m["dropout"],
+            "lr":              t["learning_rate"],
+            "weight_decay":    t["weight_decay"],
+            "batch_size":      t["batch_size"],
+            "epochs":          t["epochs"],
+            "freeze_layers":   m["freeze_layers"],
+            "dropout":         m["dropout"],
+            "dataset_size":    cfg["data"]["num_pairs"],
+            "mixup_alpha":     0.2,
+            "label_smoothing": 0.1,
+            "early_stopping_patience": 7,
+            "augmentation":    "RandomResizedCrop, RandomHorizontalFlip, ColorJitter, RandomAffine, RandomErasing",
             **{f"w_{k}": v for k, v in lw.items()},
         })
 
