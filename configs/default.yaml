@@ -13,24 +13,24 @@ data:
   image_size: 224
   alpha_min: 0.60
   alpha_max: 0.90
-  num_pairs: 50000
+  num_pairs: 200000
   train_split: 0.80
   val_split: 0.10
   seed: 42
 
 model:
-  freeze_layers: 6
+  freeze_layers: 10
   n_styles: 27
   n_artists: 851    # was 23
   n_genres: 27      # was 10
-  dropout: 0.3
+  dropout: 0.5
 
 training:
   batch_size: 32
   num_workers: 0
-  epochs: 50
+  epochs: 30
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-5
+  weight_decay: 0.01
   device: "cpu"
   loss_weights:
     style: 1.0

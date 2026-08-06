@@ -7,11 +7,20 @@ from torch.utils.data import Dataset
 from torchvision import transforms as T
 
 
-def _img_transform(size: int) -> T.Compose:
+def _img_transform(size: int, train: bool = False) -> T.Compose:
+    if train:
+        return T.Compose([
+            T.RandomResizedCrop(size, scale=(0.8, 1.0)),
+            T.RandomHorizontalFlip(p=0.5),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            T.RandomAffine(degrees=10, translate=(0.05, 0.05)),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            T.RandomErasing(p=0.25, scale=(0.02, 0.1)),
+        ])
     return T.Compose([
         T.Resize((size, size)),
         T.ToTensor(),
-        # ImageNet normalization — must match ViT pretraining
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
@@ -26,7 +35,7 @@ def _mask_transform(size: int) -> T.Compose:
 class PaintingDataset(Dataset):
     def __init__(self, root: Path, split: str = "train", image_size: int = 224):
         self.root    = root / split
-        self.tf_img  = _img_transform(image_size)
+        self.tf_img  = _img_transform(image_size, train=(split == "train"))
         self.tf_mask = _mask_transform(image_size)
 
         with open(root / "manifest.json") as f:
@@ -48,10 +57,9 @@ class PaintingDataset(Dataset):
         mask = self.tf_mask(
             Image.open(self.root / "mask" / mname).convert("L")
         )
-        mask = (mask > 0.5).float().squeeze(0)   # (H, W) binary float
+        mask = (mask > 0.5).float().squeeze(0)
 
-        # labels come from the top (visible) painting — style, artist, genre
-        # hidden painting detection is handled by the binary + heatmap heads
+        # labels come from the top (visible) painting
         targets = {
             "style":   torch.tensor(e["top_style_idx"],  dtype=torch.long),
             "artist":  torch.tensor(e["top_artist_idx"], dtype=torch.long),
