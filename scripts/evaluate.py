@@ -91,16 +91,41 @@ def evaluate_classification(model, test_dl, device) -> dict:
     return metrics
 
 
+def reshape_transform(tensor, height=14, width=14):
+    """Reshape ViT sequence output to spatial grid for Grad-CAM.
+    
+    ViT outputs (batch, num_tokens, hidden_dim) where num_tokens = 197
+    (1 CLS + 196 patches). We remove the CLS token and reshape the 196
+    patches into a 14x14 spatial grid.
+    """
+    result = tensor[:, 1:, :]  # remove CLS token
+    result = result.reshape(result.size(0), height, width, result.size(2))
+    result = result.permute(0, 3, 1, 2)  # (B, C, H, W)
+    return result
+
+
 def generate_gradcam(model, test_dl, output_dir: Path, n_samples: int = 10):
     """Generate Grad-CAM visualizations for sample test images."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # target the last transformer block in the ViT encoder
-    target_layer = model.encoder.vit.encoder.layers[-1].ln_1
+    class StyleWrapper(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
 
-    cam = GradCAM(model=model, target_layers=[target_layer])
+        def forward(self, x):
+            return self.model(x)["style"]
 
-    # inverse normalization for display
+    wrapped = StyleWrapper(model)
+    wrapped.eval()
+
+    target_layer = model.encoder.layers[-1].ln_1
+    cam = GradCAM(
+        model=wrapped,
+        target_layers=[target_layer],
+        reshape_transform=reshape_transform,
+    )
+
     inv_normalize = T.Normalize(
         mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
         std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
@@ -118,7 +143,6 @@ def generate_gradcam(model, test_dl, output_dir: Path, n_samples: int = 10):
             img_tensor = imgs[i].unsqueeze(0)
             grayscale_cam = cam(input_tensor=img_tensor)[0]
 
-            # convert tensor back to displayable image
             img_display = inv_normalize(imgs[i]).permute(1, 2, 0).numpy()
             img_display = np.clip(img_display, 0, 1)
 
@@ -142,7 +166,6 @@ def generate_gradcam(model, test_dl, output_dir: Path, n_samples: int = 10):
             plt.close()
 
             samples += 1
-
 
 def main():
     cfg = load_config()

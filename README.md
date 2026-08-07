@@ -303,12 +303,12 @@ streamlit run streamlit_app.py
 - [x] LangGraph RAG pipeline + Claude integration
 - [x] Flask API
 - [x] Streamlit frontend
-- [ ] Model training + MLflow tracking + Optuna HPO
-- [ ] Evaluation + Grad-CAM visualizations
+- [x] Model training + MLflow tracking
+- [x] Evaluation + Grad-CAM visualizations
+- [ ] Optuna HPO
 - [ ] Power BI dashboard
 - [ ] Docker + Azure Container Apps deployment
 - [ ] GitHub Actions CI/CD
-
 ---
 
 ## Author

@@ -37,4 +37,8 @@ Thumbs.db
 # Azure credentials — NEVER push these
 *.json
 !configs/*.yaml
+.envsynthetic.zip
+outputs/
+synthetic.zip
+synthetic_train.zip
 .env
